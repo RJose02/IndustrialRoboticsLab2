@@ -1,0 +1,48 @@
+% Load the UR3e robot model uses row vector format for manipulationa nd
+% visuualisation
+robot = loadrobot('universalUR3e', 'DataFormat', 'row');
+
+% Set up the Inverse Kinematics (IK) solver (determine joint angles
+% required for end effector)
+ik = inverseKinematics('RigidBodyTree', robot);
+weights = [0.25, 0.25, 0.25, 1, 1, 1]; % Weights for IK accuracy, accuracy of position 
+initialGuess = robot.homeConfiguration; % Starting point for the solver
+
+% Define pick and place poses with orientation (target poses as transformation matrices)
+%converts position vector with axis angle rotation, creating full transfom
+%matrix
+pickPose1 = trvec2tform([0.3, 0.2, 0.1]) * axang2tform([0, 1, 0, pi]); % First pick position with orientation, 
+pickPose2 = trvec2tform([0.4, 0.2, 0.1]) * axang2tform([0, 1, 0, pi]); % Second pick position with orientation
+placePose = trvec2tform([0.5, -0.2, 0.15]) * axang2tform([0, 1, 0, pi]); % Place position with orientation
+restPose = robot.homeConfiguration; % Rest (home) position
+
+% Calculate joint configurations for each pose using IK
+% tool0 referefs to robots end-effector link, the part of the robot want to
+% position at the target pose
+[configPick1, ~] = ik('tool0', pickPose1, weights, initialGuess);   % First pick position
+[configPick2, ~] = ik('tool0', pickPose2, weights, configPick1);    % Second pick position, uses configpick1 to keep the similar configuration 
+[configPlace, ~] = ik('tool0', placePose, weights, configPick2);    % Place position
+
+% Define the movement sequence configurations
+sequenceConfigs = {configPick1, configPick2, configPlace, restPose}; % Movement steps in order
+numSteps = 100; % Increased number of steps for smoother transitions
+
+% Visualization setup
+figure;
+hold on;
+axis([-0.5, 0.5, -0.5, 0.5, 0, 0.5]); % Adjust axis to UR3e workspace limits
+view(3); % Set to 3D view for better visualization
+
+% Loop through each segment in the sequence
+for j = 1:length(sequenceConfigs) - 1
+    % Generate a smooth trajectory between each configuration pair
+    traj = jtraj(sequenceConfigs{j}, sequenceConfigs{j+1}, numSteps);
+    
+    % Visualize each step along the trajectory
+    for i = 1:numSteps
+        show(robot, traj(i,:), 'PreservePlot', false); % Display each step in the plot
+        title(['UR3e Pick-and-Place Simulation: Step ', num2str(j)]);
+        drawnow;
+    end
+end
+disp('Pick-and-place sequence complete.');
